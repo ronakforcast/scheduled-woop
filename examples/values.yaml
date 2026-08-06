@@ -1,0 +1,33 @@
+config:
+  clusterId: replace-with-cast-cluster-id
+  timezone: Europe/Prague
+  pollInterval: 1m
+  applyType: DEFERRED
+  schedules:
+    - name: application-one
+      managedPolicyId: replace-with-policy-a-id
+      defaultProfile:
+        name: off-hours
+        policyId: replace-with-policy-c-id
+      windows:
+        - name: business-hours
+          days: [Monday, Tuesday, Wednesday, Thursday, Friday]
+          start: "08:00"
+          end: "18:00"
+          profile:
+            name: daytime
+            policyId: replace-with-policy-b-id
+
+    - name: application-two
+      managedPolicyId: replace-with-policy-d-id
+      defaultProfile:
+        name: normal
+        policyId: replace-with-policy-f-id
+      windows:
+        - name: batch-window
+          days: [Saturday, Sunday]
+          start: "20:00"
+          end: "06:00"
+          profile:
+            name: batch
+            policyId: replace-with-policy-e-id

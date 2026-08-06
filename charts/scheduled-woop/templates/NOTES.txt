@@ -1,0 +1,7 @@
+Create the API-key Secret before installation:
+
+  kubectl -n {{ .Release.Namespace }} create secret generic {{ .Values.existingSecret }} --from-file=api-key=./apikey.txt
+
+Inspect reconciliation logs:
+
+  kubectl -n {{ .Release.Namespace }} logs deployment/{{ include "scheduled-woop.fullname" . }} -f

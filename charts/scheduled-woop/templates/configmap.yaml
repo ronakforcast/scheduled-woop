@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "scheduled-woop.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: scheduled-woop
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  config.yaml: |
+{{ toYaml .Values.config | indent 4 }}

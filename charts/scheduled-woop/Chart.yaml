@@ -1,0 +1,6 @@
+apiVersion: v2
+name: scheduled-woop
+description: Schedule settings across multiple CAST AI workload scaling policies
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
