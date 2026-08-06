@@ -7,6 +7,9 @@ COPY . .
 RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /scheduled-woop ./cmd/scheduled-woop
 
 FROM gcr.io/distroless/static-debian12:nonroot
+LABEL org.opencontainers.image.source="https://github.com/ronakforcast/scheduled-woop"
+LABEL org.opencontainers.image.description="Schedule CAST AI Workload Autoscaler policy settings"
+LABEL org.opencontainers.image.licenses="MIT"
 COPY --from=builder /scheduled-woop /scheduled-woop
 USER 65532:65532
 ENTRYPOINT ["/scheduled-woop"]
