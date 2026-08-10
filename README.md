@@ -4,6 +4,58 @@ Schedule CAST AI Workload Autoscaler policy settings with one small Kubernetes D
 
 Scheduled WOOP keeps workloads assigned to their existing CAST AI policy. At each scheduled window it copies vertical recommendation settings from a source policy into that stable managed policy. Its name, assignment rules, and HPA settings are preserved.
 
+## How it works
+
+Your workloads never switch policies. They stay assigned to the existing **managed policy**. Scheduled WOOP changes only the vertical recommendation settings inside that policy by copying them from unassigned **source policies**, which act as templates.
+
+If you currently have one policy named `Production`, keep it assigned to your workloads and create two additional, unassigned policies:
+
+- `Business Hours`, configured for daytime scaling.
+- `Off Hours`, configured for nights and weekends.
+
+```text
++-------------+  +-------------+
+| Business    |  | Off Hours   |
+| Hours source|  | source      |
++------|------+  +------|------+
+       |                |
+       | 08:00-18:00    | nights and weekends
+       | Monday-Friday  |
+       +--------+-------+
+                |
+                v
+       Scheduled WOOP selects
+       the active source settings
+                |
+                | copies settings into
+                v
+       +--------------------------+
+       | Production policy        |
+       | Existing managed policy  |
+       +------------|-------------+
+                    | always assigned to
+                    v
+             Customer workloads
+```
+
+For this example, the weekly timeline is:
+
+```text
+Monday-Friday
+
+00:00--------------08:00----------------18:00--------------24:00
+       Off Hours            Business Hours         Off Hours
+
+Saturday-Sunday
+
+00:00------------------------------------------------------24:00
+                         Off Hours
+```
+
+At 08:00 on a weekday, Scheduled WOOP copies the `Business Hours` source settings into `Production`. At 18:00, it copies the `Off Hours` source settings into `Production`. The `Production` policy keeps its name, workload assignment rules, and HPA settings throughout.
+
+If the scheduler is unavailable at a transition, the current settings remain active. When it starts again, it calculates which window is active and immediately converges to the correct settings.
+
 ## What you need
 
 - Kubernetes with [Helm 3](https://helm.sh/docs/intro/install/).
@@ -41,39 +93,25 @@ config:
   applyType: DEFERRED
 
   schedules:
-    - name: application-one
-      managedPolicyId: policy-a
+    - name: production
+      managedPolicyId: production-policy-id
       defaultProfile:
         name: off-hours
-        policyId: policy-c
+        policyId: off-hours-policy-id
       windows:
         - name: business-hours
           days: [Monday, Tuesday, Wednesday, Thursday, Friday]
           start: "08:00"
           end: "18:00"
           profile:
-            name: daytime
-            policyId: policy-b
-
-    - name: application-two
-      managedPolicyId: policy-d
-      defaultProfile:
-        name: normal
-        policyId: policy-f
-      windows:
-        - name: batch-window
-          days: [Saturday, Sunday]
-          start: "20:00"
-          end: "06:00"
-          profile:
-            name: batch
-            policyId: policy-e
+            name: business-hours
+            policyId: business-hours-policy-id
 ```
 
 This means:
 
-- Managed policy A uses B during business hours and C otherwise.
-- Managed policy D uses E during the batch window and F otherwise.
+- `Production` uses the `Business Hours` source settings from 08:00 until 18:00 on weekdays.
+- `Production` uses the `Off Hours` source settings at all other times, including weekends.
 
 Overnight windows are supported. Window starts are inclusive and ends are exclusive in the configured IANA timezone.
 
