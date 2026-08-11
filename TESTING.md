@@ -180,7 +180,7 @@ Back up the full JSON of all three policies before testing. Use short windows at
 | OPS-05 | One-hour failure | Existing WOOP settings remain effective while scheduler is unavailable |
 | OPS-06 | Node drain | Pod reschedules and converges on another node |
 | OPS-07 | Kubernetes upgrade/restart | Deployment returns Ready and reconciles correctly |
-| OPS-08 | 24-hour soak | No crash, unbounded memory growth, repeated PUTs, or unexpected policy drift |
+| OPS-08 | Pilot observation | No crash, repeated PUTs, or unexpected policy drift during the agreed start/end change window |
 | OPS-09 | API latency | Reconciliation remains stable with slow responses below the 15-second client timeout |
 | OPS-10 | Audit trail | CAST AI audit events match expected transition writes only |
 | OPS-11 | Rollback | Previous chart version can be installed and intended source profile restored |
@@ -198,3 +198,16 @@ Do not approve broad production rollout until:
 4. Assignment rules, HPA settings, policy identity, and source policies are proven unchanged.
 5. Alerts, rollback, API-key rotation, and ownership/on-call procedures are verified.
 6. CAST AI confirms the full-update schema and preservation behavior for all current writable policy fields.
+
+## Focused design-partner acceptance checklist
+
+The first low-risk pilot does not require a 24-hour soak. Do not expose broad production workloads until every item below is signed off in the joint change ticket:
+
+- Public README-only install pulls the chart and digest-pinned image without private credentials.
+- Initial convergence, one start transition, and one end transition pass.
+- Managed policy ID/name, assignments, and HPA settings remain unchanged; source-policy JSON remains unchanged.
+- Restart after a missed transition converges to the currently active profile.
+- Invalid credentials and a temporary CAST outage cause no policy drift; recovery converges.
+- API-key rotation, reconciliation alert, Helm rollback, and intended-profile restoration are demonstrated.
+- The customer accepts observed `IMMEDIATE` workload behavior or uses `DEFERRED`.
+- Customer change-window, rollback, CAST AI solution, and incident owners are recorded.

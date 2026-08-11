@@ -73,6 +73,19 @@ If the scheduler is unavailable at a transition, the current settings remain act
 
 Source policies are templates. They should not themselves be managed by another schedule.
 
+## Preflight checklist
+
+Before installing for a customer, confirm:
+
+- The managed policy is the only policy assigned to the target workloads.
+- Every source policy is unassigned and has the intended vertical settings and apply mode.
+- The managed and source policy JSON has been backed up.
+- Schedule windows do not overlap, the IANA timezone is correct, and the default profile covers all other time.
+- Only one Scheduled WOOP release will own each managed policy.
+- A customer change-window owner and a rollback owner are present for the pilot.
+- No one will edit managed assignment rules or HPA settings during a transition.
+- `IMMEDIATE` sources have been accepted against a representative, low-risk workload.
+
 ## Five-minute installation
 
 ### 1. Create a namespace and API-key Secret
@@ -153,6 +166,8 @@ kubectl -n woop-scheduler-system logs deployment/scheduled-woop-scheduled-woop -
 
 Healthy logs show either `profile applied` or `policy already converged` for each schedule.
 
+For the first customer pilot, observe one start and one end transition. At both boundaries verify the managed policy's recommendation settings and apply mode, then prove its ID, name, workload assignments, and HPA settings did not change. Also compare both source policies with the backups. Use the focused acceptance checklist in [TESTING.md](TESTING.md).
+
 ## How reconciliation works
 
 Every poll, each schedule is handled independently:
@@ -190,6 +205,7 @@ The API-key Secret is intentionally retained. Delete it separately if no longer 
 - Two schedules cannot manage the same policy.
 - Run only one Scheduled WOOP release for a managed policy. Separate releases are not coordinated.
 - Do not edit a managed policy's assignment rules or HPA settings while reconciliation is running; CAST AI's update endpoint does not expose a conditional-write mechanism used by this controller.
+- Make those managed-policy edits only by pausing the Deployment, completing and verifying the edit, and starting the Deployment again. The next reconciliation still owns vertical settings.
 - Policy update preservation covers the writable fields documented by the current CAST AI update API. Revalidate the API contract before upgrading across schema changes.
 - External edits to managed vertical settings are overwritten on the next poll because the scheduler owns those settings.
 - The process has no Kubernetes API token or RBAC permissions.

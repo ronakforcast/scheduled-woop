@@ -5,7 +5,7 @@
 The chart exposes a cluster-internal Service on port `8080`:
 
 - `/healthz` confirms the process and HTTP server are alive.
-- `/readyz` confirms startup configuration and API-client initialization completed.
+- `/readyz` confirms startup configuration, API-client initialization, and the HTTP listener completed. It intentionally remains Ready during CAST AI authentication or availability failures so metrics remain scrapeable; use reconciliation metrics and alerts for dependency health.
 - `/metrics` exposes Prometheus text metrics for successful/failed reconciliations, successful policy PUTs, and the last successful reconciliation time.
 
 To inspect locally:
@@ -23,6 +23,8 @@ monitoring:
   alerts:
     enabled: true
 ```
+
+Verify the alert route during the pilot by temporarily using an invalid API key, observing the release-scoped reconciliation alert, and then rotating back to the valid key.
 
 ## Pin the image digest
 
@@ -79,3 +81,13 @@ Helm rollback does not restore CAST AI policy settings already applied by a prev
 
 An existing global `config.applyType: DEFERRED` remains a safety override. Review every source policy first, then remove that value only when you intend each source policy's own `IMMEDIATE` or `DEFERRED` mode to take effect.
 
+## Pilot ownership and escalation
+
+Record these names in the customer change ticket before installation:
+
+- Customer change-window owner: approves start, stop, and workload impact.
+- Rollback owner: holds the policy backups and can pause the Deployment and restore the intended source profile.
+- CAST AI solution owner: reviews scheduler logs and policy state.
+- Customer incident contact: receives availability or workload-impact escalation.
+
+On reconciliation failures, pause the Deployment if policy state is uncertain, preserve logs and policy JSON, and contact the CAST AI solution owner. For suspected credential exposure, revoke the key immediately and follow [SECURITY.md](SECURITY.md). This preview has no implied 24/7 support channel; response targets must be agreed in the customer change ticket.
