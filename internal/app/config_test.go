@@ -44,6 +44,25 @@ schedules: []
 	}
 }
 
+func TestLoadConfigReportsMissingAndMalformedFiles(t *testing.T) {
+	t.Run("missing file", func(t *testing.T) {
+		_, err := LoadConfig(filepath.Join(t.TempDir(), "missing.yaml"))
+		if err == nil || !strings.Contains(err.Error(), "read config") {
+			t.Fatalf("error = %v, want read config error", err)
+		}
+	})
+	t.Run("malformed YAML", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		if err := os.WriteFile(path, []byte("clusterId: [\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := LoadConfig(path)
+		if err == nil || !strings.Contains(err.Error(), "parse config") {
+			t.Fatalf("error = %v, want parse config error", err)
+		}
+	})
+}
+
 func TestValidateRejectsUnsafeOrAmbiguousConfiguration(t *testing.T) {
 	tests := []struct {
 		name string

@@ -170,6 +170,25 @@ func TestReconcileMultipleSchedulesAndIsolatesFailures(t *testing.T) {
 		t.Fatalf("second schedule did not reconcile: %#v", fake.updates)
 	}
 }
+
+func TestReconcileAggregatesMultipleScheduleFailures(t *testing.T) {
+	config := baseConfig()
+	config.Schedules = append(config.Schedules, PolicySchedule{
+		Name: "application-two", ManagedPolicyID: "managed-two",
+		DefaultProfile: Profile{Name: "batch-default", PolicyID: "batch-id"},
+	})
+	fake := &fakeCAST{failGet: map[string]error{
+		"safe-id":  errors.New("safe unavailable"),
+		"batch-id": errors.New("batch unavailable"),
+	}}
+	runner := Runner{Config: config, CAST: fake, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Now: func() time.Time {
+		return mustTime(t, "2026-08-03T19:00:00+02:00")
+	}}
+	err := runner.Reconcile(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "application-one") || !strings.Contains(err.Error(), "application-two") {
+		t.Fatalf("aggregated error = %v", err)
+	}
+}
 func (f *fakeCAST) UpdatePolicy(_ context.Context, _, id string, update PolicyUpdate) error {
 	if err := f.failUpdate[id]; err != nil {
 		return err
@@ -319,5 +338,24 @@ func TestRunnerStopsCleanlyWhenContextIsCancelled(t *testing.T) {
 	cancel()
 	if err := runner.Run(ctx); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRunnerConvergesImmediatelyOnStartupAfterMissedTransition(t *testing.T) {
+	config := baseConfig()
+	fake := &fakeCAST{policies: map[string]Policy{
+		"performance-id": {ID: "performance-id", Name: "source", ApplyType: "DEFERRED", RecommendationPolicies: json.RawMessage(`{"applyType":"DEFERRED","cpu":{"overhead":0.4}}`), AssignmentRules: json.RawMessage(`[]`)},
+		"managed":        {ID: "managed", Name: "managed", ApplyType: "DEFERRED", RecommendationPolicies: json.RawMessage(`{"applyType":"DEFERRED","cpu":{"overhead":0.1}}`), AssignmentRules: json.RawMessage(`[]`)},
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	runner := Runner{Config: config, CAST: fake, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Now: func() time.Time {
+		return mustTime(t, "2026-08-03T09:00:00+02:00")
+	}}
+	if err := runner.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.updates) != 1 {
+		t.Fatalf("startup updates = %d, want 1", len(fake.updates))
 	}
 }

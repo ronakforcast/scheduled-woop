@@ -75,6 +75,22 @@ func TestActiveProfileUsesConfiguredTimezoneAcrossDST(t *testing.T) {
 	}
 }
 
+func TestActiveProfileOvernightWindowWrapsAcrossWeekBoundary(t *testing.T) {
+	schedule := PolicySchedule{
+		DefaultProfile: Profile{Name: "default", PolicyID: "default-id"},
+		Windows: []Window{{
+			Name: "sunday-night", Days: []string{"Sunday"}, Start: "22:00", End: "06:00",
+			Profile: Profile{Name: "night", PolicyID: "night-id"},
+		}},
+	}
+	if got := schedule.ActiveProfile(mustTime(t, "2026-08-03T05:59:00+02:00"), "Europe/Prague").Name; got != "night" {
+		t.Fatalf("Monday continuation profile = %q, want night", got)
+	}
+	if got := schedule.ActiveProfile(mustTime(t, "2026-08-03T06:00:00+02:00"), "Europe/Prague").Name; got != "default" {
+		t.Fatalf("Monday end profile = %q, want default", got)
+	}
+}
+
 func TestValidateRejectsOverlappingOvernightWindows(t *testing.T) {
 	config := baseConfig()
 	config.Schedules[0].Windows = []Window{

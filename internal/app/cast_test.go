@@ -11,6 +11,12 @@ import (
 	"testing"
 )
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
 func TestCASTClientAuthenticationAndFullUpdate(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -70,6 +76,57 @@ func TestCASTClientRetriesTransientResponses(t *testing.T) {
 	}
 	if requests != 3 {
 		t.Fatalf("requests = %d, want 3", requests)
+	}
+}
+
+func TestCASTClientStopsAfterPersistentServerErrors(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	client, _ := NewCASTClient(server.URL, "secret")
+	if _, err := client.GetPolicy(context.Background(), "cluster", "policy"); err == nil || !strings.Contains(err.Error(), "HTTP 500") {
+		t.Fatalf("error = %v", err)
+	}
+	if requests != 3 {
+		t.Fatalf("requests = %d, want 3", requests)
+	}
+}
+
+func TestCASTClientRetriesTransportFailures(t *testing.T) {
+	requests := 0
+	client, _ := NewCASTClient("https://api.invalid", "secret")
+	client.http.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests++
+		return nil, errors.New("network unavailable")
+	})
+	if _, err := client.GetPolicy(context.Background(), "cluster", "policy"); err == nil || !strings.Contains(err.Error(), "CAST request failed") {
+		t.Fatalf("error = %v", err)
+	}
+	if requests != 3 {
+		t.Fatalf("requests = %d, want 3", requests)
+	}
+}
+
+func TestCASTClientDoesNotRetryPermanentHTTPFailures(t *testing.T) {
+	for _, status := range []int{http.StatusForbidden, http.StatusNotFound} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				requests++
+				w.WriteHeader(status)
+			}))
+			defer server.Close()
+			client, _ := NewCASTClient(server.URL, "secret")
+			if _, err := client.GetPolicy(context.Background(), "cluster", "policy"); err == nil {
+				t.Fatal("expected HTTP error")
+			}
+			if requests != 1 {
+				t.Fatalf("requests = %d, want 1", requests)
+			}
+		})
 	}
 }
 
