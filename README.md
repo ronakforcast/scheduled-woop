@@ -4,13 +4,31 @@ Scheduled WOOP automatically changes CAST AI Workload Autoscaler settings by tim
 
 Your workloads stay attached to one existing **managed policy**. The scheduler copies vertical recommendation settings and the apply mode from unassigned **source policies** into it. Policy identity, workload assignments, and HPA settings stay unchanged.
 
+## How many policies do I need?
+
+For the common Business Hours/Off Hours setup, one workload group needs **three CAST AI policies**:
+
+1. **Managed policy** — your existing policy, assigned to the workloads.
+2. **Business Hours source policy** — unassigned, with the settings to use during business hours.
+3. **Off Hours source policy** — unassigned, with the settings to use at nights and weekends.
+
+The source policies are templates. Scheduled WOOP reads them but never changes them.
+
 ```text
-Business Hours source (IMMEDIATE or DEFERRED) --\
-                                                   > Scheduled WOOP --> Managed policy --> Workloads
-Off Hours source (IMMEDIATE or DEFERRED) -------/
+Business Hours source --\
+                         > Scheduled WOOP --> Managed policy --> Workloads
+Off Hours source -------/
 ```
 
-Example: use Business Hours settings from 08:00–18:00 Monday–Friday, and Off Hours settings at every other time.
+In the example schedule below, it copies the Business Hours settings shortly after 08:00 and the Off Hours settings shortly after 18:00 on weekdays. The exact delay is up to one polling interval. The workloads always remain assigned to the managed policy.
+
+During every switch:
+
+- Vertical recommendation settings and `IMMEDIATE`/`DEFERRED` mode are changed to match the active source.
+- Managed policy ID, name, workload assignments, and HPA settings are preserved.
+- Both source policies remain unchanged.
+
+Each additional workload group needs another managed policy. It may reuse source policies when it needs identical settings, or use its own source policies for different settings. Add one source policy for every additional settings profile you want to schedule.
 
 ## Before you install
 
