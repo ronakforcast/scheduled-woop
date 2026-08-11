@@ -37,6 +37,35 @@ For a Business Hours/Off Hours schedule, use three policies:
 2. **Business Hours source policy** — unassigned.
 3. **Off Hours source policy** — unassigned.
 
+## Expected behavior example
+
+Assume the source policies contain:
+
+- **Business Hours:** `P99`, 3-day lookback, `IMMEDIATE`.
+- **Off Hours/Weekend:** `P75`, 3-hour lookback, `DEFERRED`.
+
+The managed policy is the only policy assigned to the workloads.
+
+```text
+Shortly after Monday 08:00
+Business Hours source selected
+        |
+        +--> Managed policy receives P99 + 3-day lookback + IMMEDIATE
+        +--> CAST AI uses those settings for recommendations
+        +--> Applicable changes may resize/restart workloads immediately
+
+Shortly after Monday 18:00 and during the weekend
+Off Hours source selected
+        |
+        +--> Managed policy receives P75 + 3-hour lookback + DEFERRED
+        +--> CAST AI uses those settings for recommendations
+        +--> No immediate workload rollout is triggered by the policy switch
+```
+
+The Business Hours profile includes more of the recent business peaks and typically provides more headroom. The Off Hours profile focuses on recent lower usage and may produce lower recommendations. Actual CPU/memory changes still depend on observed usage and CAST AI's resulting recommendation. Scheduled WOOP switches policy settings; CAST AI decides the recommendation and applies it through its `IMMEDIATE` or `DEFERRED` lifecycle.
+
+Throughout the schedule, workload assignments, managed policy ID/name, and HPA settings remain unchanged. The two source policies also remain unchanged.
+
 ## Install
 
 Requirements: Kubernetes 1.19+, Helm 3.14+, and a CAST AI API key that can read and update scaling policies.
