@@ -67,11 +67,18 @@ func (r *Runner) reconcileSchedule(ctx context.Context, schedule PolicySchedule,
 		return fmt.Errorf("read managed policy: %w", err)
 	}
 
-	recommendations, err := forceApplyType(source.RecommendationPolicies, r.Config.ApplyType)
+	if source.ApplyType != "IMMEDIATE" && source.ApplyType != "DEFERRED" {
+		return fmt.Errorf("profile %s has unsupported applyType %q", profile.Name, source.ApplyType)
+	}
+	applyType := source.ApplyType
+	if r.Config.ApplyType == "DEFERRED" {
+		applyType = "DEFERRED"
+	}
+	recommendations, err := setApplyType(source.RecommendationPolicies, applyType)
 	if err != nil {
 		return err
 	}
-	desired := PolicyUpdate{Name: managed.Name, ApplyType: r.Config.ApplyType, RecommendationPolicies: recommendations, AssignmentRules: managed.AssignmentRules, HPASettings: managed.HPASettings}
+	desired := PolicyUpdate{Name: managed.Name, ApplyType: applyType, RecommendationPolicies: recommendations, AssignmentRules: managed.AssignmentRules, HPASettings: managed.HPASettings}
 	current := PolicyUpdate{Name: managed.Name, ApplyType: managed.ApplyType, RecommendationPolicies: managed.RecommendationPolicies, AssignmentRules: managed.AssignmentRules, HPASettings: managed.HPASettings}
 	equal, err := equivalent(current, desired)
 	if err != nil {
@@ -80,6 +87,9 @@ func (r *Runner) reconcileSchedule(ctx context.Context, schedule PolicySchedule,
 	if equal {
 		r.Log.Info("policy already converged", "profile", profile.Name, "managedPolicyId", managed.ID)
 		return nil
+	}
+	if applyType == "IMMEDIATE" {
+		r.Log.Warn("applying immediate profile; CAST AI may restart or resize workloads", "schedule", schedule.Name, "profile", profile.Name, "managedPolicyId", managed.ID)
 	}
 	if err := r.CAST.UpdatePolicy(ctx, r.Config.ClusterID, schedule.ManagedPolicyID, desired); err != nil {
 		return fmt.Errorf("apply profile %s: %w", profile.Name, err)
@@ -97,7 +107,7 @@ func (r *Runner) reconcileSchedule(ctx context.Context, schedule PolicySchedule,
 	return nil
 }
 
-func forceApplyType(raw json.RawMessage, applyType string) (json.RawMessage, error) {
+func setApplyType(raw json.RawMessage, applyType string) (json.RawMessage, error) {
 	var value map[string]any
 	if err := json.Unmarshal(raw, &value); err != nil {
 		return nil, fmt.Errorf("recommendationPolicies: %w", err)

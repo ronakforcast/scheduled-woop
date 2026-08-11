@@ -1,6 +1,6 @@
 image:
   repository: ghcr.io/ronakforcast/scheduled-woop
-  tag: "0.1.0"
+  tag: "0.2.0"
   pullPolicy: IfNotPresent
 
 # Create this Secret before installing the chart. The API key never belongs in values.yaml.
@@ -10,7 +10,6 @@ config:
   clusterId: replace-with-cast-cluster-id
   timezone: Europe/Prague
   pollInterval: 1m
-  applyType: DEFERRED
   schedules:
     - name: application-one
       managedPolicyId: replace-with-policy-a-id

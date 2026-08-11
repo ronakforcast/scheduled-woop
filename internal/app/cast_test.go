@@ -3,8 +3,11 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -43,5 +46,132 @@ func TestCASTClientAuthenticationAndFullUpdate(t *testing.T) {
 	}
 	if requests != 2 {
 		t.Fatalf("requests = %d", requests)
+	}
+}
+
+func validPolicyResponse() string {
+	return `{"id":"policy","name":"managed","applyType":"DEFERRED","recommendationPolicies":{"applyType":"DEFERRED"},"assignmentRules":[]}`
+}
+
+func TestCASTClientRetriesTransientResponses(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		if requests < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = io.WriteString(w, validPolicyResponse())
+	}))
+	defer server.Close()
+	client, _ := NewCASTClient(server.URL, "secret")
+	if _, err := client.GetPolicy(context.Background(), "cluster", "policy"); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 3 {
+		t.Fatalf("requests = %d, want 3", requests)
+	}
+}
+
+func TestCASTClientRetriesRateLimitAndStopsAfterThreeAttempts(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	client, _ := NewCASTClient(server.URL, "secret")
+	if _, err := client.GetPolicy(context.Background(), "cluster", "policy"); err == nil || !strings.Contains(err.Error(), "HTTP 429") {
+		t.Fatalf("error = %v", err)
+	}
+	if requests != 3 {
+		t.Fatalf("requests = %d, want 3", requests)
+	}
+}
+
+func TestCASTClientDoesNotRetryPolicyUpdates(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != http.MethodPut {
+			t.Fatalf("method = %s, want PUT", r.Method)
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	client, _ := NewCASTClient(server.URL, "secret")
+	err := client.UpdatePolicy(context.Background(), "cluster", "policy", PolicyUpdate{
+		Name: "managed", ApplyType: "IMMEDIATE", RecommendationPolicies: json.RawMessage(`{"applyType":"IMMEDIATE"}`), AssignmentRules: json.RawMessage(`[]`),
+	})
+	if err == nil || !strings.Contains(err.Error(), "HTTP 503") {
+		t.Fatalf("error = %v", err)
+	}
+	if requests != 1 {
+		t.Fatalf("update requests = %d, want 1", requests)
+	}
+}
+
+func TestCASTClientDoesNotRetryPermanentErrorsOrExposeResponseBody(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `sensitive server detail`)
+	}))
+	defer server.Close()
+	client, _ := NewCASTClient(server.URL, "super-secret-key")
+	_, err := client.GetPolicy(context.Background(), "cluster", "policy")
+	if err == nil || !strings.Contains(err.Error(), "HTTP 401") {
+		t.Fatalf("error = %v", err)
+	}
+	if strings.Contains(err.Error(), "sensitive") || strings.Contains(err.Error(), "super-secret") {
+		t.Fatalf("error leaks sensitive data: %v", err)
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d, want 1", requests)
+	}
+}
+
+func TestCASTClientRejectsMalformedAndIncompleteResponses(t *testing.T) {
+	tests := []struct{ name, body, want string }{
+		{"malformed JSON", `{`, "decode CAST response"},
+		{"missing required fields", `{"id":"policy"}`, "missing required fields"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, tc.body) }))
+			defer server.Close()
+			client, _ := NewCASTClient(server.URL, "secret")
+			if _, err := client.GetPolicy(context.Background(), "cluster", "policy"); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want containing %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestCASTClientHonorsCancelledContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	client, _ := NewCASTClient(server.URL, "secret")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := client.GetPolicy(ctx, "cluster", "policy")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context canceled", err)
+	}
+}
+
+func TestNewCASTClientRejectsInvalidConfiguration(t *testing.T) {
+	for _, tc := range []struct{ name, url, key string }{
+		{"relative URL", "/api", "secret"},
+		{"empty key", "https://api.cast.ai", "  "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := NewCASTClient(tc.url, tc.key); err == nil {
+				t.Fatal("expected configuration error")
+			}
+		})
 	}
 }

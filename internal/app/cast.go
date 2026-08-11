@@ -75,7 +75,11 @@ func (c *CASTClient) request(ctx context.Context, method, path string, input, ou
 			return err
 		}
 	}
-	for attempt := 0; attempt < 3; attempt++ {
+	maxAttempts := 1
+	if method == http.MethodGet {
+		maxAttempts = 3
+	}
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bytes.NewReader(payload))
 		if err != nil {
 			return err
@@ -90,7 +94,7 @@ func (c *CASTClient) request(ctx context.Context, method, path string, input, ou
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			if attempt < 2 {
+			if attempt+1 < maxAttempts {
 				time.Sleep(time.Duration(attempt+1) * 250 * time.Millisecond)
 				continue
 			}
@@ -102,7 +106,7 @@ func (c *CASTClient) request(ctx context.Context, method, path string, input, ou
 			return readErr
 		}
 		if response.StatusCode == 429 || response.StatusCode >= 500 {
-			if attempt < 2 {
+			if attempt+1 < maxAttempts {
 				time.Sleep(time.Duration(attempt+1) * 250 * time.Millisecond)
 				continue
 			}

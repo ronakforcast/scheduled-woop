@@ -2,7 +2,6 @@ config:
   clusterId: replace-with-cast-cluster-id
   timezone: Europe/Prague
   pollInterval: 1m
-  applyType: DEFERRED
   schedules:
     - name: application-one
       managedPolicyId: replace-with-policy-a-id

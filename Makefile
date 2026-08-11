@@ -1,6 +1,6 @@
-.PHONY: all test build image helm-check helm-package
+.PHONY: all test build image helm-check helm-test helm-package
 
-all: test build helm-check
+all: test build helm-check helm-test
 
 test:
 	go test -race ./...
@@ -15,6 +15,9 @@ image:
 helm-check:
 	helm lint charts/scheduled-woop
 	helm template test charts/scheduled-woop --namespace woop-scheduler-system >/dev/null
+
+helm-test:
+	bash tests/helm_test.sh
 
 helm-package: helm-check
 	mkdir -p bin

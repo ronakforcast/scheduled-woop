@@ -55,9 +55,6 @@ func LoadConfig(path string) (Config, error) {
 	} else if config.PollInterval, err = time.ParseDuration(config.PollIntervalRaw); err != nil {
 		return Config{}, fmt.Errorf("pollInterval: %w", err)
 	}
-	if config.ApplyType == "" {
-		config.ApplyType = "DEFERRED"
-	}
 	if err := config.Validate(); err != nil {
 		return Config{}, err
 	}
@@ -74,8 +71,8 @@ func (c Config) Validate() error {
 	if c.PollInterval < 10*time.Second {
 		return errors.New("pollInterval must be at least 10s")
 	}
-	if c.ApplyType != "DEFERRED" {
-		return errors.New("only DEFERRED applyType is supported")
+	if c.ApplyType != "" && c.ApplyType != "DEFERRED" {
+		return errors.New("config.applyType is deprecated and ignored; set the apply mode on each source policy")
 	}
 	if len(c.Schedules) == 0 {
 		return errors.New("at least one schedule is required")

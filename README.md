@@ -13,6 +13,10 @@ If you currently have one policy named `Production`, keep it assigned to your wo
 - `Business Hours`, configured for daytime scaling.
 - `Off Hours`, configured for nights and weekends.
 
+Set **When to apply changes** independently on each source policy. For example, `Business Hours` may use `IMMEDIATE` while `Off Hours` uses `DEFERRED`; Scheduled WOOP copies the active source policy's mode along with its vertical recommendation settings.
+
+If upgrading from `0.1.0`, an existing global `config.applyType: DEFERRED` continues forcing all scheduled profiles to deferred mode. Review every source policy, then remove the global value to explicitly opt into source-controlled modes.
+
 ```text
 +-------------+  +-------------+
 | Business    |  | Off Hours   |
@@ -54,6 +58,8 @@ Saturday-Sunday
 
 At 08:00 on a weekday, Scheduled WOOP copies the `Business Hours` source settings into `Production`. At 18:00, it copies the `Off Hours` source settings into `Production`. The `Production` policy keeps its name, workload assignment rules, and HPA settings throughout.
 
+If the active source uses `IMMEDIATE`, CAST AI may restart or resize affected workloads as soon as the scheduled settings generate applicable recommendations. Use CAST AI rollout safeguards and test the transition against representative workloads before production.
+
 If the scheduler is unavailable at a transition, the current settings remain active. When it starts again, it calculates which window is active and immediately converges to the correct settings.
 
 ## What you need
@@ -90,7 +96,6 @@ config:
   clusterId: your-cast-cluster-id
   timezone: Europe/Prague
   pollInterval: 1m
-  applyType: DEFERRED
 
   schedules:
     - name: production
@@ -122,7 +127,7 @@ Install the published chart:
 ```bash
 helm upgrade --install scheduled-woop \
   oci://ghcr.io/ronakforcast/charts/scheduled-woop \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --namespace woop-scheduler-system \
   --values examples/values.yaml \
   --wait
@@ -156,7 +161,7 @@ Every poll, each schedule is handled independently:
 2. Read the source and managed policies from CAST AI.
 3. Copy only `recommendationPolicies` from the source.
 4. Preserve the managed policy's name, assignment rules, and HPA settings.
-5. Force `DEFERRED` application.
+5. Copy the active source policy's `IMMEDIATE` or `DEFERRED` application mode.
 6. Skip the write if it is already correct.
 7. Otherwise update once and read back to verify.
 
@@ -178,10 +183,14 @@ The API-key Secret is intentionally retained. Delete it separately if no longer 
 
 ## Safety and limitations
 
-- Only `DEFERRED` mode is supported.
+- Each source policy controls whether its scheduled settings use `IMMEDIATE` or `DEFERRED` mode.
+- `IMMEDIATE` can restart or resize workloads at a scheduled transition. Configure CAST AI rollout safeguards and validate disruption behavior before using it in production.
 - HPA settings are preserved, not scheduled.
 - A policy cannot be both a managed target and a source template.
 - Two schedules cannot manage the same policy.
+- Run only one Scheduled WOOP release for a managed policy. Separate releases are not coordinated.
+- Do not edit a managed policy's assignment rules or HPA settings while reconciliation is running; CAST AI's update endpoint does not expose a conditional-write mechanism used by this controller.
+- Policy update preservation covers the writable fields documented by the current CAST AI update API. Revalidate the API contract before upgrading across schema changes.
 - External edits to managed vertical settings are overwritten on the next poll because the scheduler owns those settings.
 - The process has no Kubernetes API token or RBAC permissions.
 - The container runs read-only as numeric non-root UID/GID `65532`.
@@ -194,6 +203,8 @@ The API-key Secret is intentionally retained. Delete it separately if no longer 
 - Startup validation failure: check timezone, unique names/managed IDs, local times, and overlapping windows.
 
 ## Development
+
+See [TESTING.md](TESTING.md) for the complete automated, staging acceptance, and production canary test plan.
 
 ```bash
 make all          # race tests, binary build, Helm lint/render
