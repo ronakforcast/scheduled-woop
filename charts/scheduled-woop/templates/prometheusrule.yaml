@@ -1,0 +1,26 @@
+{{- if .Values.monitoring.alerts.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "scheduled-woop.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: scheduled-woop
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  groups:
+    - name: scheduled-woop
+      rules:
+        - alert: ScheduledWoopUnavailable
+          expr: kube_deployment_status_replicas_available{namespace={{ .Release.Namespace | quote }},deployment={{ include "scheduled-woop.fullname" . | quote }}} < 1
+          for: {{ .Values.monitoring.alerts.unavailableFor }}
+          labels: {severity: critical}
+          annotations:
+            summary: Scheduled WOOP is unavailable
+        - alert: ScheduledWoopReconciliationFailures
+          expr: increase(scheduled_woop_reconciliations_total{result="failure"}[10m]) > 0
+          for: {{ .Values.monitoring.alerts.failuresFor }}
+          labels: {severity: warning}
+          annotations:
+            summary: Scheduled WOOP reconciliation is failing
+{{- end }}

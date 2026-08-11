@@ -1,10 +1,15 @@
 image:
   repository: ghcr.io/ronakforcast/scheduled-woop
   tag: "0.2.0"
+  # When set, digest takes precedence over tag.
+  digest: ""
   pullPolicy: IfNotPresent
 
 # Create this Secret before installing the chart. The API key never belongs in values.yaml.
 existingSecret: castai-api-credentials
+
+# Override only for private endpoints or controlled outage testing.
+castApiUrl: https://api.cast.ai
 
 config:
   clusterId: replace-with-cast-cluster-id
@@ -42,3 +47,14 @@ config:
 resources:
   requests: {cpu: 10m, memory: 16Mi}
   limits: {cpu: 100m, memory: 64Mi}
+
+observability:
+  port: 8080
+
+monitoring:
+  prometheusAnnotations: true
+  alerts:
+    # Requires the Prometheus Operator CRDs when enabled.
+    enabled: false
+    unavailableFor: 5m
+    failuresFor: 10m

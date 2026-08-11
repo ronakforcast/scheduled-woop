@@ -205,6 +205,7 @@ The API-key Secret is intentionally retained. Delete it separately if no longer 
 ## Development
 
 See [TESTING.md](TESTING.md) for the complete automated, staging acceptance, and production canary test plan.
+See [OPERATIONS.md](OPERATIONS.md) for monitoring, image pinning, API-key rotation, upgrades, and rollback.
 
 ```bash
 make all          # race tests, binary build, Helm lint/render

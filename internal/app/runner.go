@@ -16,10 +16,11 @@ type PolicyAPI interface {
 }
 
 type Runner struct {
-	Config Config
-	CAST   PolicyAPI
-	Log    *slog.Logger
-	Now    func() time.Time
+	Config  Config
+	CAST    PolicyAPI
+	Log     *slog.Logger
+	Metrics *Metrics
+	Now     func() time.Time
 }
 
 func (r *Runner) Run(ctx context.Context) error {
@@ -53,7 +54,11 @@ func (r *Runner) Reconcile(ctx context.Context) error {
 			reconcileErrors = append(reconcileErrors, fmt.Errorf("schedule %s: %w", schedule.Name, err))
 		}
 	}
-	return errors.Join(reconcileErrors...)
+	result := errors.Join(reconcileErrors...)
+	if r.Metrics != nil {
+		r.Metrics.RecordReconcile(result, now)
+	}
+	return result
 }
 
 func (r *Runner) reconcileSchedule(ctx context.Context, schedule PolicySchedule, now time.Time) error {
@@ -93,6 +98,9 @@ func (r *Runner) reconcileSchedule(ctx context.Context, schedule PolicySchedule,
 	}
 	if err := r.CAST.UpdatePolicy(ctx, r.Config.ClusterID, schedule.ManagedPolicyID, desired); err != nil {
 		return fmt.Errorf("apply profile %s: %w", profile.Name, err)
+	}
+	if r.Metrics != nil {
+		r.Metrics.RecordPolicyUpdate()
 	}
 	verified, err := r.CAST.GetPolicy(ctx, r.Config.ClusterID, schedule.ManagedPolicyID)
 	if err != nil {

@@ -5,3 +5,9 @@ Create the API-key Secret before installation:
 Inspect reconciliation logs:
 
   kubectl -n {{ .Release.Namespace }} logs deployment/{{ include "scheduled-woop.fullname" . }} -f
+
+Check health and metrics:
+
+  kubectl -n {{ .Release.Namespace }} port-forward service/{{ include "scheduled-woop.fullname" . }} 8080:{{ .Values.observability.port }}
+  curl http://127.0.0.1:8080/healthz
+  curl http://127.0.0.1:8080/metrics

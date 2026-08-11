@@ -6,6 +6,8 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -357,5 +359,24 @@ func TestRunnerConvergesImmediatelyOnStartupAfterMissedTransition(t *testing.T) 
 	}
 	if len(fake.updates) != 1 {
 		t.Fatalf("startup updates = %d, want 1", len(fake.updates))
+	}
+}
+
+func TestRunnerRecordsReconciliationAndPolicyUpdateMetrics(t *testing.T) {
+	metrics := NewMetrics()
+	fake := &fakeCAST{policies: map[string]Policy{
+		"safe-id": {ID: "safe-id", Name: "source", ApplyType: "DEFERRED", RecommendationPolicies: json.RawMessage(`{"applyType":"DEFERRED","cpu":{"overhead":0.2}}`), AssignmentRules: json.RawMessage(`[]`)},
+		"managed": {ID: "managed", Name: "managed", ApplyType: "DEFERRED", RecommendationPolicies: json.RawMessage(`{"applyType":"DEFERRED","cpu":{"overhead":0.1}}`), AssignmentRules: json.RawMessage(`[]`)},
+	}}
+	runner := Runner{Config: baseConfig(), CAST: fake, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Metrics: metrics, Now: func() time.Time {
+		return mustTime(t, "2026-08-03T19:00:00+02:00")
+	}}
+	if err := runner.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	metrics.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if body := recorder.Body.String(); !strings.Contains(body, `scheduled_woop_reconciliations_total{result="success"} 1`) || !strings.Contains(body, "scheduled_woop_policy_updates_total 1") {
+		t.Fatalf("metrics = %s", body)
 	}
 }

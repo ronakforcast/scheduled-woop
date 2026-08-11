@@ -30,7 +30,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: scheduled-woop
-          image: "{{ required "image.repository is required" .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ include "scheduled-woop.image" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             allowPrivilegeEscalation: false
@@ -39,6 +39,18 @@ spec:
           env:
             - {name: CONFIG_PATH, value: /etc/scheduled-woop/config.yaml}
             - {name: CAST_API_KEY_FILE, value: /etc/scheduled-woop-secret/api-key}
+            - {name: CAST_API_URL, value: {{ .Values.castApiUrl | quote }}}
+            - {name: LISTEN_ADDRESS, value: ":{{ .Values.observability.port }}"}
+          ports:
+            - {name: metrics, containerPort: {{ .Values.observability.port }}, protocol: TCP}
+          livenessProbe:
+            httpGet: {path: /healthz, port: metrics}
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /readyz, port: metrics}
+            initialDelaySeconds: 1
+            periodSeconds: 5
           volumeMounts:
             - {name: config, mountPath: /etc/scheduled-woop, readOnly: true}
             - {name: api-key, mountPath: /etc/scheduled-woop-secret, readOnly: true}
