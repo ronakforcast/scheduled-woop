@@ -12,7 +12,7 @@ Record the chart version, image digest, cluster ID, policy IDs, timezone, tester
 
 ## Automated test catalog
 
-The tables below define the release target, not a claim that every row already passes. Current CI implementation covers the core boundary, validation, reconciliation, HTTP, and Helm safety cases. Before a production release, map every ID to a named automated test result or recorded acceptance result. Known gaps still requiring explicit evidence include SCH-10, CFG-03/04, REC-15/16, API-07/08, K8S-13/14, and all acceptance/operational cases.
+The tables below define the release target, not a claim that every row already passes. Current CI implementation covers the schedule boundary, validation, reconciliation, HTTP, and Helm safety cases. The isolated acceptance results are recorded in [docs/VALIDATION.md](docs/VALIDATION.md). Public artifact checks and the design-partner immediate-disruption acceptance remain release/pilot gates.
 
 ### Schedule selection
 
