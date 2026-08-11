@@ -2,6 +2,33 @@
 
 Schedule CAST AI Workload Autoscaler policy settings by time of day.
 
+## How it works
+
+Workloads remain assigned to their existing managed policy. Scheduled WOOP selects a source policy for the current time and copies its vertical recommendation settings and `IMMEDIATE`/`DEFERRED` mode into the managed policy.
+
+```text
+Business Hours source (unassigned) --\
+                                       > Scheduled WOOP --> Managed policy --> Workloads
+Off Hours source (unassigned) -------/                         |
+                                                                +-- ID/name preserved
+                                                                +-- assignments preserved
+                                                                +-- HPA settings preserved
+```
+
+Expected flow for the example schedule:
+
+```text
+Weekdays
+00:00 -------- 08:00 ---------------- 18:00 -------- 24:00
+   Off Hours          Business Hours         Off Hours
+
+Weekends
+00:00 ------------------------------------------------ 24:00
+                         Off Hours
+```
+
+While the scheduler and CAST AI API are available, each boundary is applied within one polling interval. Source policies are read-only and are never modified. If the scheduler misses a boundary, it applies the currently active source after restarting.
+
 ## Policy setup
 
 For a Business Hours/Off Hours schedule, use three policies:
@@ -9,8 +36,6 @@ For a Business Hours/Off Hours schedule, use three policies:
 1. **Managed policy** — assigned to the workloads.
 2. **Business Hours source policy** — unassigned.
 3. **Off Hours source policy** — unassigned.
-
-Scheduled WOOP copies the active source policy's vertical recommendation settings and `IMMEDIATE`/`DEFERRED` mode into the managed policy. It preserves the managed policy's ID, name, assignments, and HPA settings. Source policies are never modified.
 
 ## Install
 
