@@ -1,10 +1,46 @@
 # Scheduled WOOP
 
-Schedule CAST AI Workload Autoscaler policy settings by time of day.
+Scheduled WOOP schedules CAST AI Workload Autoscaler policy settings for predictable business and off-hours traffic. Workloads remain assigned to one managed policy while the active source policy supplies its vertical recommendation settings and `IMMEDIATE` or `DEFERRED` mode.
 
-## How it works
+> **Demo screenshot placeholder:** Add a CAST AI policy transition or terminal verification image here.
 
-Workloads remain assigned to their existing managed policy. Scheduled WOOP selects a source policy for the current time and copies its vertical recommendation settings and `IMMEDIATE`/`DEFERRED` mode into the managed policy.
+## Features
+
+- Schedules business-hours, off-hours, overnight, and weekend profiles.
+- Supports multiple managed policies and independent schedules.
+- Uses each source policy's `IMMEDIATE` or `DEFERRED` mode.
+- Preserves managed policy identity, assignments, and HPA settings.
+- Leaves source policies unchanged.
+- Converges to the correct profile after a restart or missed transition.
+- Installs as a small Kubernetes Deployment, ConfigMap, and Service through Helm.
+
+## Tech stack
+
+- **Application:** Go
+- **Deployment:** Kubernetes and Helm
+- **Configuration:** YAML
+- **Integration:** CAST AI API
+- **Container:** Distroless Linux, multi-architecture (`amd64` and `arm64`)
+
+## Getting started
+
+### Prerequisites
+
+- Kubernetes 1.19 or newer
+- Helm 3.14 or newer
+- `kubectl` configured for the target cluster
+- CAST AI Workload Autoscaler enabled
+- A CAST AI API key that can read and update scaling policies
+- One managed policy assigned to the workloads
+- Two unassigned source policies for the example schedule
+
+### Policy setup
+
+For a Business Hours/Off Hours schedule, use:
+
+1. **Managed policy** — assigned to the workloads.
+2. **Business Hours source policy** — unassigned.
+3. **Off Hours source policy** — unassigned.
 
 ```text
 Business Hours source (unassigned) --\
@@ -15,70 +51,30 @@ Off Hours source (unassigned) -------/                         |
                                                                 +-- HPA settings preserved
 ```
 
-Expected flow for the example schedule:
+### 1. Create the API-key Secret
 
-```text
-Weekdays
-00:00 -------- 08:00 ---------------- 18:00 -------- 24:00
-   Off Hours          Business Hours         Off Hours
-
-Weekends
-00:00 ------------------------------------------------ 24:00
-                         Off Hours
-```
-
-While the scheduler and CAST AI API are available, each boundary is applied within one polling interval. Source policies are read-only and are never modified. If the scheduler misses a boundary, it applies the currently active source after restarting.
-
-## Policy setup
-
-For a Business Hours/Off Hours schedule, use three policies:
-
-1. **Managed policy** — assigned to the workloads.
-2. **Business Hours source policy** — unassigned.
-3. **Off Hours source policy** — unassigned.
-
-## Expected behavior example
-
-Assume the source policies contain:
-
-- **Business Hours:** `P99`, 3-day lookback, `IMMEDIATE`.
-- **Off Hours/Weekend:** `P75`, 3-hour lookback, `DEFERRED`.
-
-The managed policy is the only policy assigned to the workloads.
-
-```text
-Shortly after Monday 08:00
-Business Hours source selected
-        |
-        +--> Managed policy receives P99 + 3-day lookback + IMMEDIATE
-        +--> CAST AI uses those settings for recommendations
-        +--> Applicable changes may resize/restart workloads immediately
-
-Shortly after Monday 18:00 and during the weekend
-Off Hours source selected
-        |
-        +--> Managed policy receives P75 + 3-hour lookback + DEFERRED
-        +--> CAST AI uses those settings for recommendations
-        +--> No immediate workload rollout is triggered by the policy switch
-```
-
-The Business Hours profile includes more of the recent business peaks and typically provides more headroom. The Off Hours profile focuses on recent lower usage and may produce lower recommendations. Actual CPU/memory changes still depend on observed usage and CAST AI's resulting recommendation. Scheduled WOOP switches policy settings; CAST AI decides the recommendation and applies it through its `IMMEDIATE` or `DEFERRED` lifecycle.
-
-Throughout the schedule, workload assignments, managed policy ID/name, and HPA settings remain unchanged. The two source policies also remain unchanged.
-
-## Install
-
-Requirements: Kubernetes 1.19+, Helm 3.14+, and a CAST AI API key that can read and update scaling policies.
-
-### 1. Create the Secret
+Save the key locally as `apikey.txt` and run:
 
 ```bash
-kubectl create namespace woop-scheduler-system
+kubectl create namespace woop-scheduler-system --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n woop-scheduler-system create secret generic castai-api-credentials \
   --from-file=api-key=./apikey.txt
 ```
 
+No `.env` file is required for the Helm installation. The chart supplies the runtime environment, and the API key is mounted directly from the Kubernetes Secret.
+
+Runtime environment variables used by the container are:
+
+```text
+CONFIG_PATH=/etc/scheduled-woop/config.yaml
+CAST_API_KEY_FILE=/etc/scheduled-woop-secret/api-key
+CAST_API_URL=https://api.cast.ai
+LISTEN_ADDRESS=:8080
+```
+
 ### 2. Create `values.yaml`
+
+Replace the cluster and policy ID placeholders:
 
 ```yaml
 config:
@@ -102,9 +98,7 @@ config:
             policyId: your-business-hours-source-policy-id
 ```
 
-This applies Business Hours settings from 08:00–18:00 on weekdays and Off Hours settings at all other times. Start is inclusive, end is exclusive, and the timezone must be an IANA timezone. Overnight windows are supported.
-
-Add more `schedules` for additional managed policies. Source policies may be reused when the desired settings are identical.
+Start times are inclusive, end times are exclusive, and `timezone` must be an IANA timezone. Overnight windows are supported.
 
 ### 3. Install
 
@@ -126,19 +120,46 @@ kubectl -n woop-scheduler-system logs deployment/scheduled-woop-scheduled-woop -
 
 Healthy logs show `profile applied` or `policy already converged` for each schedule.
 
-## Safety
+## Usage
 
-- Back up all three policies before the first installation.
-- Use only one scheduler for each managed policy.
-- Do not use a managed policy as a source policy.
-- Do not edit managed assignment or HPA settings while the scheduler is running.
-- `IMMEDIATE` can resize or restart workloads at a transition; test it on a low-risk workload first.
-- If the scheduler misses a transition, it converges to the currently active profile when it restarts.
-- Upgrading from `0.1.0`: legacy `config.applyType: DEFERRED` keeps forcing deferred mode until removed.
+The example configuration produces this schedule:
 
-## Update or uninstall
+```text
+Weekdays
+00:00 -------- 08:00 ---------------- 18:00 -------- 24:00
+   Off Hours          Business Hours         Off Hours
 
-Edit `values.yaml` and rerun the Helm command to change the schedule.
+Weekends
+00:00 ------------------------------------------------ 24:00
+                         Off Hours
+```
+
+Assume the source policies contain:
+
+- **Business Hours:** `P99`, 3-day lookback, `IMMEDIATE`.
+- **Off Hours:** `P75`, 3-hour lookback, `DEFERRED`.
+
+```text
+Shortly after 08:00 on a weekday
+Business Hours source selected
+        +--> Managed policy receives P99 + 3-day lookback + IMMEDIATE
+        +--> CAST AI uses those settings for recommendations
+        +--> Applicable changes may resize/restart workloads immediately
+
+Shortly after 18:00 and during weekends
+Off Hours source selected
+        +--> Managed policy receives P75 + 3-hour lookback + DEFERRED
+        +--> CAST AI uses those settings for recommendations
+        +--> No immediate workload rollout is triggered by the switch
+```
+
+The Business Hours profile typically provides more headroom, while the Off Hours profile follows recent lower usage and may produce lower recommendations. Actual CPU and memory changes depend on observed usage and CAST AI's recommendation.
+
+Throughout the schedule, the managed policy ID, name, workload assignments, and HPA settings remain unchanged. Source policies are read-only. While the scheduler and CAST AI API are available, transitions occur within one polling interval; missed transitions converge after restart.
+
+### Update or uninstall
+
+Edit `values.yaml` and rerun the Helm installation command to change a schedule.
 
 Before uninstalling, wait until the profile you want to leave active is converged:
 
@@ -146,14 +167,41 @@ Before uninstalling, wait until the profile you want to leave active is converge
 helm uninstall scheduled-woop --namespace woop-scheduler-system
 ```
 
-Uninstalling leaves the current CAST AI settings and API-key Secret unchanged.
+Uninstalling leaves the active CAST AI settings and API-key Secret unchanged.
 
-## Troubleshooting
+## Safety
 
-- `401/403`: check the API key and permissions.
-- `404`: check the cluster and policy IDs.
-- Configuration error: check the Secret, timezone, policy IDs, times, and overlapping windows.
+- Back up all policies before the first installation.
+- Use only one scheduler for each managed policy.
+- Do not use a managed policy as a source policy.
+- Do not edit managed assignments or HPA settings while the scheduler is running.
+- Test `IMMEDIATE` transitions on a low-risk workload first.
+- Upgrading from `0.1.0`: legacy `config.applyType: DEFERRED` forces deferred mode until removed.
 
-More detail: [operations](OPERATIONS.md), [testing](TESTING.md), [compatibility](docs/COMPATIBILITY.md), [validation](docs/VALIDATION.md), and [security](SECURITY.md).
+## Governance
+
+### Tests
+
+Development requires Go 1.26+, Helm, Bash, and Docker.
+
+```bash
+make all
+make image
+```
+
+See [TESTING.md](TESTING.md) for automated and customer acceptance coverage.
+
+### Contributing
+
+Create a focused branch, include tests or documentation for the change, run `make all`, and open a pull request. Never commit CAST AI API keys, customer policy exports, or other credentials.
+
+### Support and security
+
+- [Operations and rollback](OPERATIONS.md)
+- [Compatibility](docs/COMPATIBILITY.md)
+- [Validation evidence](docs/VALIDATION.md)
+- [Security policy](SECURITY.md)
+
+### License
 
 MIT License. See [LICENSE](LICENSE).
