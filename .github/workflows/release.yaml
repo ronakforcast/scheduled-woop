@@ -5,38 +5,69 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: azure/setup-helm@v5
+      - name: Verify version and tests
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          CHART_VERSION="$(helm show chart charts/scheduled-woop | awk '/^version:/ {print $2}')"
+          test "$VERSION" = "$CHART_VERSION"
+          make all
+      - name: Secret scan
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 dir /repo --no-banner
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 git /repo --no-banner
+      - name: Go vulnerability scan
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v5
-        id: meta
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=raw,value=latest
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
+        id: build
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-      - uses: azure/setup-helm@v4
+          tags: ghcr.io/${{ github.repository }}:candidate-${{ github.sha }}
+      - name: Scan and inventory exact published candidate
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
+        run: |
+          for PLATFORM in linux/amd64 linux/arm64; do
+            ARCH="${PLATFORM#linux/}"
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.73.0 image --platform "$PLATFORM" --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE"
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/out" anchore/syft:v1.51.0 "$IMAGE" --platform "$PLATFORM" -o "spdx-json=/out/sbom-${ARCH}.spdx.json"
+          done
+      - name: Promote scanned digest
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          docker buildx imagetools create -t "ghcr.io/${GITHUB_REPOSITORY}:${VERSION}" -t "ghcr.io/${GITHUB_REPOSITORY}:latest" "$IMAGE"
       - run: helm registry login ghcr.io --username "${GITHUB_ACTOR}" --password "${GITHUB_TOKEN}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: |
           helm package charts/scheduled-woop --destination dist
           helm push dist/scheduled-woop-*.tgz oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts
+      - name: Publish preview release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" dist/scheduled-woop-*.tgz sbom-*.spdx.json --title "$GITHUB_REF_NAME" --generate-notes --prerelease

@@ -2,3 +2,4 @@
 bin
 cover.out
 apikey.txt
+sbom.spdx.json

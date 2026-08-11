@@ -64,7 +64,7 @@ If the scheduler is unavailable at a transition, the current settings remain act
 
 ## What you need
 
-- Kubernetes with [Helm 3](https://helm.sh/docs/intro/install/).
+- Kubernetes 1.19+ with [Helm 3.14+](https://helm.sh/docs/intro/install/). See [compatibility](docs/COMPATIBILITY.md).
 - A CAST AI cluster with Workload Autoscaler enabled.
 - A CAST AI API key allowed to read and update workload scaling policies.
 - For each application:
@@ -206,6 +206,7 @@ The API-key Secret is intentionally retained. Delete it separately if no longer 
 
 See [TESTING.md](TESTING.md) for the complete automated, staging acceptance, and production canary test plan.
 See [OPERATIONS.md](OPERATIONS.md) for monitoring, image pinning, API-key rotation, upgrades, and rollback.
+See [SECURITY.md](SECURITY.md) for the security model, release scans, and vulnerability reporting.
 
 ```bash
 make all          # race tests, binary build, Helm lint/render

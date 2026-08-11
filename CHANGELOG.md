@@ -7,6 +7,8 @@
 - Avoid retrying policy PUT requests within one reconciliation; the next poll reads current state first.
 - Use `Recreate` deployment updates to avoid overlapping scheduler pods.
 - Add production test catalog, API failure coverage, scheduling boundaries, and Helm security contract tests.
+- Add health/readiness endpoints, Prometheus metrics and optional alerts.
+- Pin Go 1.26.5 and container base images by digest; add mandatory secret, vulnerability, image, and SBOM release checks.
 
 ## 0.1.0
 

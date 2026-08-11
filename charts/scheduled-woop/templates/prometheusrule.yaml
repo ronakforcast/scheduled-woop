@@ -18,9 +18,12 @@ spec:
           annotations:
             summary: Scheduled WOOP is unavailable
         - alert: ScheduledWoopReconciliationFailures
-          expr: increase(scheduled_woop_reconciliations_total{result="failure"}[10m]) > 0
+          expr: increase(scheduled_woop_reconciliations_total{namespace={{ .Release.Namespace | quote }},service={{ include "scheduled-woop.fullname" . | quote }},result="failure"}[10m]) > 0
           for: {{ .Values.monitoring.alerts.failuresFor }}
-          labels: {severity: warning}
+          labels:
+            severity: warning
+            namespace: {{ .Release.Namespace }}
+            release: {{ .Release.Name }}
           annotations:
             summary: Scheduled WOOP reconciliation is failing
 {{- end }}

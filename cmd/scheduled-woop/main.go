@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -41,10 +43,16 @@ func main() {
 		Handler:           metrics.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+	listener, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		logger.Error("bind observability server", "address", server.Addr, "error", err)
+		os.Exit(1)
+	}
+	serverErrors := make(chan error, 1)
 	go func() {
-		logger.Info("observability server started", "address", server.Addr)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("observability server failed", "error", err)
+		logger.Info("observability server started", "address", listener.Addr().String())
+		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErrors <- err
 			cancel()
 		}
 	}()
@@ -60,6 +68,12 @@ func main() {
 	if err := runner.Run(ctx); err != nil {
 		logger.Error("stopped", "error", err)
 		os.Exit(1)
+	}
+	select {
+	case err := <-serverErrors:
+		logger.Error("observability server failed", "error", err)
+		os.Exit(1)
+	default:
 	}
 }
 
